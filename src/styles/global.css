@@ -1214,6 +1214,36 @@ img {
   box-shadow: none;
 }
 
+/* Gender Selector */
+.gender-selector {
+  display: flex;
+  gap: 10px;
+}
+
+.gender-btn {
+  flex: 1;
+  padding: 14px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--gray-50);
+  color: var(--gray-600);
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.2s var(--ease-out);
+  border: 2px solid transparent;
+  text-align: center;
+}
+
+.gender-btn:active {
+  transform: scale(0.97);
+}
+
+.gender-btn.active {
+  background: rgba(186,12,47,0.06);
+  color: var(--uga-red);
+  border-color: var(--uga-red);
+  box-shadow: 0 0 0 4px rgba(186,12,47,0.08);
+}
+
 /* ========== PROFILE VIEW ========== */
 
 .profile-view {

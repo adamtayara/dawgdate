@@ -21,6 +21,8 @@ export async function upsertProfile(userId, profile) {
       bio: profile.bio || '',
       photo_url: profile.photo_url || '',
       major: profile.major || '',
+      gender: profile.gender || '',
+      looking_for: profile.looking_for || 'everyone',
     })
     .select()
     .single()
@@ -47,6 +49,13 @@ export async function uploadPhoto(userId, file) {
 // ============ DISCOVERY ============
 
 export async function getDiscoverProfiles(userId) {
+  // Get current user's preference
+  const { data: currentUser } = await supabase
+    .from('profiles')
+    .select('looking_for')
+    .eq('id', userId)
+    .single()
+
   // Get IDs the user already swiped on
   const { data: swipes } = await supabase
     .from('swipes')
@@ -56,12 +65,20 @@ export async function getDiscoverProfiles(userId) {
   const swipedIds = (swipes || []).map(s => s.swiped_id)
   const excludeIds = [userId, ...swipedIds]
 
-  const { data: profiles } = await supabase
+  let query = supabase
     .from('profiles')
     .select('*')
     .not('id', 'in', `(${excludeIds.join(',')})`)
     .order('created_at', { ascending: false })
     .limit(20)
+
+  // Filter by gender preference
+  const pref = currentUser?.looking_for
+  if (pref && pref !== 'everyone' && pref !== '') {
+    query = query.eq('gender', pref)
+  }
+
+  const { data: profiles } = await query
 
   return profiles || []
 }

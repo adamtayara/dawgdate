@@ -5,6 +5,8 @@ export default function Onboarding({ onComplete, isSupabase }) {
   const [age, setAge] = useState('')
   const [bio, setBio] = useState('')
   const [major, setMajor] = useState('')
+  const [gender, setGender] = useState('')
+  const [lookingFor, setLookingFor] = useState('')
   const [photo, setPhoto] = useState(null)
   const [photoFile, setPhotoFile] = useState(null)
   const [dragOver, setDragOver] = useState(false)
@@ -27,7 +29,7 @@ export default function Onboarding({ onComplete, isSupabase }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!name.trim() || !age) return
+    if (!name.trim() || !age || !gender) return
     setLoading(true)
     try {
       await onComplete({
@@ -35,6 +37,8 @@ export default function Onboarding({ onComplete, isSupabase }) {
         age: parseInt(age),
         bio: bio.trim(),
         major: major.trim(),
+        gender,
+        looking_for: lookingFor || 'everyone',
         photo: photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=400&background=BA0C2F&color=fff&bold=true`,
         photoFile: isSupabase ? photoFile : null,
       })
@@ -43,7 +47,7 @@ export default function Onboarding({ onComplete, isSupabase }) {
     }
   }
 
-  const isValid = name.trim() && age >= 18
+  const isValid = name.trim() && age >= 18 && gender
 
   return (
     <div className="onboarding">
@@ -121,6 +125,53 @@ export default function Onboarding({ onComplete, isSupabase }) {
               onChange={(e) => setMajor(e.target.value)}
               maxLength={50}
             />
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">I am a</label>
+          <div className="gender-selector">
+            <button
+              type="button"
+              className={`gender-btn ${gender === 'male' ? 'active' : ''}`}
+              onClick={() => setGender('male')}
+            >
+              Male
+            </button>
+            <button
+              type="button"
+              className={`gender-btn ${gender === 'female' ? 'active' : ''}`}
+              onClick={() => setGender('female')}
+            >
+              Female
+            </button>
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Show me</label>
+          <div className="gender-selector">
+            <button
+              type="button"
+              className={`gender-btn ${lookingFor === 'male' ? 'active' : ''}`}
+              onClick={() => setLookingFor('male')}
+            >
+              Men
+            </button>
+            <button
+              type="button"
+              className={`gender-btn ${lookingFor === 'female' ? 'active' : ''}`}
+              onClick={() => setLookingFor('female')}
+            >
+              Women
+            </button>
+            <button
+              type="button"
+              className={`gender-btn ${lookingFor === 'everyone' || lookingFor === '' ? 'active' : ''}`}
+              onClick={() => setLookingFor('everyone')}
+            >
+              Everyone
+            </button>
           </div>
         </div>
 
