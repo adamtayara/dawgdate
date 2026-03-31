@@ -101,6 +101,13 @@ export default function App() {
   }
 
   const handleSwipe = useCallback(async (swipeProfile, direction) => {
+    // Rate limit check
+    const allowed = await db.canSwipe(session.user.id)
+    if (!allowed) {
+      alert('You\'ve reached your daily swipe limit! Come back tomorrow.')
+      return
+    }
+
     setDiscoverProfiles(prev => prev.filter(p => p.id !== swipeProfile.id))
     setSwipeCount(c => c + 1)
 

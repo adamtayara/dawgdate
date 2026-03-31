@@ -49,12 +49,14 @@ export async function uploadPhoto(userId, file) {
 // ============ DISCOVERY ============
 
 export async function getDiscoverProfiles(userId) {
-  // Get current user's preference
+  // Get current user's profile (ELO + preference)
   const { data: currentUser } = await supabase
     .from('profiles')
-    .select('looking_for')
+    .select('looking_for, elo_rating')
     .eq('id', userId)
     .single()
+
+  const userElo = currentUser?.elo_rating || 1000
 
   // Get IDs the user already swiped on
   const { data: swipes } = await supabase
@@ -65,12 +67,12 @@ export async function getDiscoverProfiles(userId) {
   const swipedIds = (swipes || []).map(s => s.swiped_id)
   const excludeIds = [userId, ...swipedIds]
 
+  // Fetch a wider pool, then sort by ELO proximity client-side
   let query = supabase
     .from('profiles')
     .select('*')
     .not('id', 'in', `(${excludeIds.join(',')})`)
-    .order('created_at', { ascending: false })
-    .limit(20)
+    .limit(50)
 
   // Filter by gender preference
   const pref = currentUser?.looking_for
@@ -80,7 +82,33 @@ export async function getDiscoverProfiles(userId) {
 
   const { data: profiles } = await query
 
-  return profiles || []
+  if (!profiles || profiles.length === 0) return []
+
+  // ELO-based feed ordering with controlled randomness
+  // Prefer profiles within ~200 ELO but sprinkle in variety
+  return profiles
+    .map(p => {
+      const eloDiff = Math.abs((p.elo_rating || 1000) - userElo)
+      // Score: lower = shown first. ELO proximity weighted + random jitter
+      // 70% ELO proximity, 30% random for variety
+      const proximityScore = eloDiff / 400
+      const randomJitter = Math.random() * 0.6
+      return { ...p, _feedScore: proximityScore * 0.7 + randomJitter * 0.3 }
+    })
+    .sort((a, b) => a._feedScore - b._feedScore)
+    .slice(0, 20)
+    .map(({ _feedScore, ...profile }) => profile) // strip internal score
+}
+
+// Check if user can swipe (rate limiting)
+export async function canSwipe(userId) {
+  const { count } = await supabase
+    .from('swipes')
+    .select('*', { count: 'exact', head: true })
+    .eq('swiper_id', userId)
+    .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+
+  return (count || 0) < 200 // 200 swipes per day max
 }
 
 // ============ SWIPES & MATCHES ============
