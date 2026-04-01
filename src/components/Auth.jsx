@@ -11,6 +11,15 @@ export default function Auth({ onAuth }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+
+    // .edu email validation on signup
+    if (mode === 'signup') {
+      if (!email.toLowerCase().endsWith('.edu')) {
+        setError('Please use a valid .edu email address to sign up.')
+        return
+      }
+    }
+
     setLoading(true)
 
     try {
@@ -19,8 +28,18 @@ export default function Auth({ onAuth }) {
           email,
           password,
         })
-        if (signUpError) throw signUpError
-        // Auto sign-in after signup (Supabase does this by default)
+        if (signUpError) {
+          // Supabase returns generic error for duplicate emails
+          if (signUpError.message.includes('already registered') || signUpError.message.includes('already been registered')) {
+            throw new Error('An account with this email already exists. Try signing in instead.')
+          }
+          throw signUpError
+        }
+        // Check if user was actually created vs duplicate
+        // Supabase may return a user object even for duplicates with email confirmation disabled
+        if (data.user && data.user.identities && data.user.identities.length === 0) {
+          throw new Error('An account with this email already exists. Try signing in instead.')
+        }
         if (data.user) {
           onAuth(data.user, true) // true = needs profile setup
         }
@@ -61,11 +80,16 @@ export default function Auth({ onAuth }) {
           <input
             className="form-input"
             type="email"
-            placeholder="your@uga.edu"
+            placeholder={mode === 'signup' ? 'your@university.edu' : 'your@email.com'}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
+          {mode === 'signup' && (
+            <span style={{ fontSize: '12px', color: 'var(--gray-400)', marginTop: '2px' }}>
+              Must be a .edu email address
+            </span>
+          )}
         </div>
 
         <div className="form-group">

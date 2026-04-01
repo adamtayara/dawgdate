@@ -119,16 +119,20 @@ export async function recordSwipe(swiperId, swipedId, direction) {
     .insert({ swiper_id: swiperId, swiped_id: swipedId, direction })
   if (error) throw error
 
-  // Check if a match was created (the DB trigger handles this)
+  // Check if a match was created (DB trigger handles creation)
   if (direction === 'right') {
+    // Small delay to let the DB trigger complete
+    await new Promise(r => setTimeout(r, 100))
+
     const { data: match } = await supabase
       .from('matches')
       .select('*')
       .or(
         `and(user1_id.eq.${swiperId},user2_id.eq.${swipedId}),and(user1_id.eq.${swipedId},user2_id.eq.${swiperId})`
       )
-      .single()
-    return match // null if no match yet
+      .maybeSingle()
+
+    return match // null if no mutual like yet
   }
   return null
 }
