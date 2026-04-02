@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import * as db from '../lib/db'
+import { generateMatchDatePlan, getMatchDatePlan, getMyDatePrefs } from '../lib/ai'
 import Auth from './Auth'
 import Onboarding from './Onboarding'
+import DateOnboarding from './DateOnboarding'
 import SwipeDeck from './SwipeDeck'
 import ChatList from './ChatList'
 import ChatRoom from './ChatRoom'
@@ -14,18 +16,23 @@ export default function App() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [needsProfile, setNeedsProfile] = useState(false)
+  const [needsDateOnboarding, setNeedsDateOnboarding] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const [discoverProfiles, setDiscoverProfiles] = useState([])
   const [matches, setMatches] = useState([])
   const [messages, setMessages] = useState({})
   const [tab, setTab] = useState('swipe')
-  const [chatWith, setChatWith] = useState(null) // { matchId, profile }
+  const [chatWith, setChatWith] = useState(null)
   const [matchPopup, setMatchPopup] = useState(null)
   const [swipeCount, setSwipeCount] = useState(0)
   const [hasNewMatch, setHasNewMatch] = useState(false)
 
-  // Listen for auth state changes
+  // AI date feature state
+  const [myDatePrefs, setMyDatePrefs] = useState(null) // { structured_prefs, date_personality }
+  const [datePlans, setDatePlans] = useState({})        // { [matchId]: planText }
+  const [datePlanLoading, setDatePlanLoading] = useState(false)
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s)
@@ -49,11 +56,24 @@ export default function App() {
     if (p) {
       setProfile(p)
       setNeedsProfile(false)
+      // Check if date onboarding is needed (no personality yet)
+      if (!p.date_personality) {
+        setNeedsDateOnboarding(true)
+      }
       loadData(userId)
+      // Load user's own date prefs for compatibility scoring
+      loadMyDatePrefs()
     } else {
       setNeedsProfile(true)
     }
     setLoading(false)
+  }
+
+  const loadMyDatePrefs = async () => {
+    try {
+      const prefs = await getMyDatePrefs()
+      if (prefs) setMyDatePrefs(prefs)
+    } catch {}
   }
 
   const loadData = async (userId) => {
@@ -64,7 +84,6 @@ export default function App() {
     setDiscoverProfiles(profiles)
     setMatches(matchList)
 
-    // Load last messages for each match
     const msgMap = {}
     await Promise.all(
       matchList.map(async (m) => {
@@ -72,12 +91,23 @@ export default function App() {
       })
     )
     setMessages(msgMap)
+
+    // Load existing date plans for all matches
+    await Promise.all(
+      matchList.map(async (m) => {
+        try {
+          const plan = await getMatchDatePlan(m.matchId)
+          if (plan?.plan_text) {
+            setDatePlans(prev => ({ ...prev, [m.matchId]: plan.plan_text }))
+          }
+        } catch {}
+      })
+    )
   }
 
   const handleAuth = (user, isNewUser) => {
     if (isNewUser) {
       setNeedsProfile(true)
-      // Supabase auto-signs in after signup — sync session state
       supabase.auth.getSession().then(({ data: { session: s } }) => {
         if (s) setSession(s)
       })
@@ -87,7 +117,6 @@ export default function App() {
   }
 
   const handleProfileComplete = async (profileData) => {
-    // Re-fetch session in case it refreshed since signup
     const { data: { session: currentSession } } = await supabase.auth.getSession()
     const userId = (currentSession || session).user.id
     let photoUrl = ''
@@ -95,7 +124,7 @@ export default function App() {
     if (profileData.photoFile) {
       photoUrl = await db.uploadPhoto(userId, profileData.photoFile)
     } else if (profileData.photo) {
-      photoUrl = profileData.photo // data URL fallback
+      photoUrl = profileData.photo
     }
 
     const p = await db.upsertProfile(userId, {
@@ -105,11 +134,28 @@ export default function App() {
     if (currentSession && !session) setSession(currentSession)
     setProfile(p)
     setNeedsProfile(false)
-    loadData(userId)
+    // New users always go through date onboarding
+    setNeedsDateOnboarding(true)
+  }
+
+  const handleDateOnboardingComplete = (result) => {
+    // Update local profile with the new personality/summary
+    setProfile(prev => prev ? {
+      ...prev,
+      date_personality: result.date_personality,
+      date_vibe_summary: result.vibe_summary,
+    } : prev)
+    setNeedsDateOnboarding(false)
+    loadData(session.user.id)
+    loadMyDatePrefs()
+  }
+
+  const handleDateOnboardingSkip = () => {
+    setNeedsDateOnboarding(false)
+    loadData(session.user.id)
   }
 
   const handleSwipe = useCallback(async (swipeProfile, direction) => {
-    // Rate limit check
     const allowed = await db.canSwipe(session.user.id)
     if (!allowed) {
       alert('You\'ve reached your daily swipe limit! Come back tomorrow.')
@@ -130,6 +176,20 @@ export default function App() {
       setMatchPopup(matchEntry)
       setHasNewMatch(true)
       setTimeout(() => setHasNewMatch(false), 2000)
+
+      // Generate date plan async — show loading state in modal
+      setDatePlanLoading(true)
+      try {
+        const plan = await generateMatchDatePlan(
+          match.id,
+          session.user.id,
+          swipeProfile.id
+        )
+        if (plan) {
+          setDatePlans(prev => ({ ...prev, [match.id]: plan }))
+        }
+      } catch {}
+      setDatePlanLoading(false)
     }
   }, [session])
 
@@ -141,11 +201,16 @@ export default function App() {
     }))
   }, [session])
 
+  // Send date idea as a message in the current chat
+  const handleSendDateIdea = useCallback(async (text) => {
+    if (!chatWith) return
+    await handleSendMessage(chatWith.matchId, text)
+  }, [chatWith, handleSendMessage])
+
   // Real-time message subscription
   useEffect(() => {
     if (!chatWith) return
     const unsub = db.subscribeToMessages(chatWith.matchId, (newMsg) => {
-      // Only add if not from us (we already added it optimistically)
       if (newMsg.sender_id !== session?.user?.id) {
         setMessages(prev => ({
           ...prev,
@@ -166,6 +231,8 @@ export default function App() {
     setTab('swipe')
     setChatWith(null)
     setSwipeCount(0)
+    setMyDatePrefs(null)
+    setDatePlans({})
   }
 
   // Loading screen
@@ -186,7 +253,6 @@ export default function App() {
     )
   }
 
-  // Auth screen
   if (!session) {
     return (
       <div className="app">
@@ -195,11 +261,21 @@ export default function App() {
     )
   }
 
-  // Profile setup screen
   if (needsProfile || !profile) {
     return (
       <div className="app">
         <Onboarding onComplete={handleProfileComplete} isSupabase />
+      </div>
+    )
+  }
+
+  if (needsDateOnboarding) {
+    return (
+      <div className="app">
+        <DateOnboarding
+          onComplete={handleDateOnboardingComplete}
+          onSkip={handleDateOnboardingSkip}
+        />
       </div>
     )
   }
@@ -214,6 +290,9 @@ export default function App() {
     age: profile.age,
     bio: profile.bio,
     photo: profile.photo_url,
+    photo_url: profile.photo_url,
+    date_personality: profile.date_personality,
+    date_vibe_summary: profile.date_vibe_summary,
   }
 
   return (
@@ -231,12 +310,17 @@ export default function App() {
 
       <div className="main-content">
         {tab === 'swipe' && (
-          <SwipeDeck profiles={discoverProfiles} onSwipe={handleSwipe} />
+          <SwipeDeck
+            profiles={discoverProfiles}
+            onSwipe={handleSwipe}
+            myVector={profile.date_vibe_vector || myDatePrefs?.structured_prefs}
+          />
         )}
         {tab === 'matches' && !chatWith && (
           <ChatList
             matches={matches}
             messages={messages}
+            datePlans={datePlans}
             onOpenChat={openChat}
           />
         )}
@@ -247,6 +331,9 @@ export default function App() {
             currentUserId={session.user.id}
             onSend={(text) => handleSendMessage(chatWith.matchId, text)}
             onBack={() => setChatWith(null)}
+            datePlan={datePlans[chatWith.matchId]}
+            matchId={chatWith.matchId}
+            onSendDateIdea={handleSendDateIdea}
           />
         )}
         {tab === 'profile' && (
@@ -255,6 +342,7 @@ export default function App() {
             matchCount={matches.length}
             likeCount={swipeCount}
             onLogout={handleLogout}
+            onEditDateStyle={() => setNeedsDateOnboarding(true)}
           />
         )}
       </div>
@@ -262,7 +350,7 @@ export default function App() {
       {!(tab === 'matches' && chatWith) && (
         <BottomNav
           activeTab={tab}
-          onTabChange={(t) => { setTab(t); setChatWith(null); if (t === 'matches') setHasNewMatch(false); }}
+          onTabChange={(t) => { setTab(t); setChatWith(null); if (t === 'matches') setHasNewMatch(false) }}
           matchCount={matches.length}
           hasNewMatch={hasNewMatch}
         />
@@ -272,8 +360,17 @@ export default function App() {
         <MatchModal
           user={userForUI}
           match={matchPopup.profile}
-          onChat={() => { const m = matchPopup; setMatchPopup(null); openChat(m); }}
+          onChat={() => { const m = matchPopup; setMatchPopup(null); openChat(m) }}
           onClose={() => setMatchPopup(null)}
+          datePlan={datePlans[matchPopup.matchId]}
+          datePlanLoading={datePlanLoading}
+          matchId={matchPopup.matchId}
+          onSendDateIdea={async (text) => {
+            const m = matchPopup
+            setMatchPopup(null)
+            openChat(m)
+            await handleSendMessage(m.matchId, text)
+          }}
         />
       )}
     </div>

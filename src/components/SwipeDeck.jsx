@@ -1,9 +1,36 @@
 import { useRef, useState, useCallback } from 'react'
+import { computeCompatibility, getVibeTeaser, getPersonalityMeta } from '../lib/ai'
 
 const SWIPE_THRESHOLD = 100
 const ROTATION_FACTOR = 0.1
 
-function SwipeCardInner({ profile, isTop, onSwipe, triggerRef }) {
+function CompatibilityBadge({ myVector, theirVector, theirPersonality }) {
+  const score = computeCompatibility(myVector, theirVector)
+  const teaser = getVibeTeaser(myVector, theirVector)
+  const meta = theirPersonality ? getPersonalityMeta(theirPersonality) : null
+
+  if (!score && !meta) return null
+
+  return (
+    <div className="card-compat-row">
+      {meta && (
+        <span className="card-personality-chip" style={{ background: `${meta.color}22`, color: meta.color }}>
+          {meta.emoji} {theirPersonality}
+        </span>
+      )}
+      {score && (
+        <span className="card-compat-score">
+          {score}% match
+        </span>
+      )}
+      {teaser && !score && (
+        <span className="card-compat-teaser">✨ {teaser}</span>
+      )}
+    </div>
+  )
+}
+
+function SwipeCardInner({ profile, isTop, onSwipe, triggerRef, myVector }) {
   const cardRef = useRef(null)
   const startPos = useRef({ x: 0, y: 0 })
   const [offset, setOffset] = useState({ x: 0, y: 0 })
@@ -81,25 +108,32 @@ function SwipeCardInner({ profile, isTop, onSwipe, triggerRef }) {
           {profile.name} <span className="card-age">{profile.age}</span>
         </div>
         <div className="card-bio">{profile.bio}</div>
-        <div className="card-major">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
-            <path d="M6 12v5c3 3 9 3 12 0v-5" />
-          </svg>
-          {profile.major}
+        <div className="card-footer-row">
+          {profile.major && (
+            <div className="card-major">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+                <path d="M6 12v5c3 3 9 3 12 0v-5" />
+              </svg>
+              {profile.major}
+            </div>
+          )}
         </div>
+        {isTop && (profile.date_vibe_vector || profile.date_personality) && (
+          <CompatibilityBadge
+            myVector={myVector}
+            theirVector={profile.date_vibe_vector}
+            theirPersonality={profile.date_personality}
+          />
+        )}
       </div>
-      <div className="stamp stamp-like" style={{ opacity: likeOpacity }}>
-        LIKE
-      </div>
-      <div className="stamp stamp-nope" style={{ opacity: nopeOpacity }}>
-        NOPE
-      </div>
+      <div className="stamp stamp-like" style={{ opacity: likeOpacity }}>LIKE</div>
+      <div className="stamp stamp-nope" style={{ opacity: nopeOpacity }}>NOPE</div>
     </div>
   )
 }
 
-export default function SwipeDeck({ profiles, onSwipe }) {
+export default function SwipeDeck({ profiles, onSwipe, myVector }) {
   const triggerRef = useRef(null)
   const visible = profiles.slice(0, 2)
 
@@ -129,6 +163,7 @@ export default function SwipeDeck({ profiles, onSwipe }) {
             isTop={i === visible.length - 1}
             onSwipe={onSwipe}
             triggerRef={i === visible.length - 1 ? triggerRef : null}
+            myVector={myVector}
           />
         ))}
       </div>

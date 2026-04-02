@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
+import MatchDateCard from './MatchDateCard'
 
-export default function ChatRoom({ match, messages, currentUserId, onSend, onBack }) {
+export default function ChatRoom({ match, messages, currentUserId, onSend, onBack, datePlan, matchId, onSendDateIdea }) {
   const [text, setText] = useState('')
+  const [showDatePlan, setShowDatePlan] = useState(false)
   const messagesEndRef = useRef(null)
 
   useEffect(() => {
@@ -30,7 +32,28 @@ export default function ChatRoom({ match, messages, currentUserId, onSend, onBac
           <div className="chat-room-name">{match.name}</div>
           <div className="chat-room-status">Online</div>
         </div>
+        {datePlan && (
+          <button
+            className="chat-date-plan-btn"
+            onClick={() => setShowDatePlan(!showDatePlan)}
+            title="View your AI date idea"
+          >
+            💡
+          </button>
+        )}
       </div>
+
+      {/* Expandable date plan panel */}
+      {datePlan && showDatePlan && (
+        <div className="chat-date-plan-panel">
+          <MatchDateCard
+            matchId={matchId}
+            plan={datePlan}
+            onSendIdea={(text) => { onSendDateIdea(text); setShowDatePlan(false) }}
+            compact={false}
+          />
+        </div>
+      )}
 
       <div className="chat-messages">
         {messages.length === 0 && (
@@ -44,6 +67,14 @@ export default function ChatRoom({ match, messages, currentUserId, onSend, onBac
             <div style={{ fontSize: '32px', marginBottom: '12px' }}>🎉</div>
             You matched with <strong style={{ color: 'var(--gray-600)' }}>{match.name}</strong>!<br />
             Break the ice and say hello.
+            {datePlan && (
+              <button
+                style={{ display: 'block', margin: '16px auto 0', color: 'var(--uga-red)', fontWeight: 600, fontSize: '13px' }}
+                onClick={() => setShowDatePlan(true)}
+              >
+                💡 View your AI date idea
+              </button>
+            )}
           </div>
         )}
         {messages.map((msg) => {

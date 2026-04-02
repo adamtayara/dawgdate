@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import MatchDateCard from './MatchDateCard'
 
 function Confetti() {
   const pieces = useMemo(() => {
@@ -36,7 +37,7 @@ function Confetti() {
   )
 }
 
-export default function MatchModal({ user, match, onChat, onClose }) {
+export default function MatchModal({ user, match, onChat, onClose, datePlan, datePlanLoading, matchId, onSendDateIdea }) {
   return (
     <div className="match-overlay" onClick={onClose}>
       <Confetti />
@@ -54,6 +55,23 @@ export default function MatchModal({ user, match, onChat, onClose }) {
           </div>
           <img className="match-photo" src={match.photo_url || match.photo} alt={match.name} />
         </div>
+
+        {/* Date plan section */}
+        {datePlanLoading && (
+          <div className="date-plan-loading">
+            <div className="date-plan-loading-dots">
+              <span /><span /><span />
+            </div>
+            <p>Building your first date plan...</p>
+          </div>
+        )}
+        {!datePlanLoading && datePlan && (
+          <MatchDateCard
+            matchId={matchId}
+            plan={datePlan}
+            onSendIdea={onSendDateIdea}
+          />
+        )}
 
         <div className="match-actions">
           <button className="match-btn primary" onClick={onChat}>
