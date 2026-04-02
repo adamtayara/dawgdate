@@ -69,12 +69,55 @@ export default function Auth({ onAuth }) {
           </svg>
         </div>
         <div className="onboarding-logo">DawgDate</div>
-        <p className="onboarding-tagline">
-          {mode === 'signin' ? 'Welcome back, Dawg!' : 'Join the pack'}
-        </p>
+        <p className="onboarding-tagline">Find your Dawg</p>
       </div>
 
-      <form className="onboarding-form" onSubmit={handleSubmit}>
+      {/* Mode toggle tabs */}
+      <div style={{
+        display: 'flex',
+        background: 'var(--gray-100)',
+        borderRadius: 'var(--radius-md)',
+        padding: '4px',
+        marginBottom: '24px',
+        gap: '4px',
+      }}>
+        <button
+          type="button"
+          onClick={() => { setMode('signin'); setError('') }}
+          style={{
+            flex: 1,
+            padding: '10px',
+            borderRadius: 'calc(var(--radius-md) - 2px)',
+            fontSize: '15px',
+            fontWeight: 700,
+            transition: 'all 0.2s',
+            background: mode === 'signin' ? 'var(--uga-red)' : 'transparent',
+            color: mode === 'signin' ? 'white' : 'var(--gray-500)',
+            boxShadow: mode === 'signin' ? '0 2px 8px rgba(186,12,47,0.3)' : 'none',
+          }}
+        >
+          Sign In
+        </button>
+        <button
+          type="button"
+          onClick={() => { setMode('signup'); setError('') }}
+          style={{
+            flex: 1,
+            padding: '10px',
+            borderRadius: 'calc(var(--radius-md) - 2px)',
+            fontSize: '15px',
+            fontWeight: 700,
+            transition: 'all 0.2s',
+            background: mode === 'signup' ? 'var(--uga-red)' : 'transparent',
+            color: mode === 'signup' ? 'white' : 'var(--gray-500)',
+            boxShadow: mode === 'signup' ? '0 2px 8px rgba(186,12,47,0.3)' : 'none',
+          }}
+        >
+          Sign Up
+        </button>
+      </div>
+
+      <form className="onboarding-form" onSubmit={handleSubmit} style={{ paddingTop: 0 }}>
         <div className="form-group">
           <label className="form-label">Email</label>
           <input
@@ -124,20 +167,6 @@ export default function Auth({ onAuth }) {
           disabled={loading || !email || !password}
         >
           {loading ? 'Loading...' : mode === 'signin' ? 'Sign In' : 'Create Account'}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError('') }}
-          style={{
-            textAlign: 'center',
-            color: 'var(--uga-red)',
-            fontSize: '15px',
-            fontWeight: 600,
-            padding: '8px',
-          }}
-        >
-          {mode === 'signin' ? "Don't have an account? Sign Up" : 'Already have an account? Sign In'}
         </button>
       </form>
     </div>

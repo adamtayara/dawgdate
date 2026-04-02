@@ -23,6 +23,7 @@ export default function App() {
   const [chatWith, setChatWith] = useState(null) // { matchId, profile }
   const [matchPopup, setMatchPopup] = useState(null)
   const [swipeCount, setSwipeCount] = useState(0)
+  const [hasNewMatch, setHasNewMatch] = useState(false)
 
   // Listen for auth state changes
   useEffect(() => {
@@ -76,13 +77,19 @@ export default function App() {
   const handleAuth = (user, isNewUser) => {
     if (isNewUser) {
       setNeedsProfile(true)
+      // Supabase auto-signs in after signup — sync session state
+      supabase.auth.getSession().then(({ data: { session: s } }) => {
+        if (s) setSession(s)
+      })
     } else {
       loadProfile(user.id)
     }
   }
 
   const handleProfileComplete = async (profileData) => {
-    const userId = session.user.id
+    // Re-fetch session in case it refreshed since signup
+    const { data: { session: currentSession } } = await supabase.auth.getSession()
+    const userId = (currentSession || session).user.id
     let photoUrl = ''
 
     if (profileData.photoFile) {
@@ -95,6 +102,7 @@ export default function App() {
       ...profileData,
       photo_url: photoUrl,
     })
+    if (currentSession && !session) setSession(currentSession)
     setProfile(p)
     setNeedsProfile(false)
     loadData(userId)
@@ -120,6 +128,8 @@ export default function App() {
       }
       setMatches(prev => [matchEntry, ...prev])
       setMatchPopup(matchEntry)
+      setHasNewMatch(true)
+      setTimeout(() => setHasNewMatch(false), 2000)
     }
   }, [session])
 
@@ -252,8 +262,9 @@ export default function App() {
       {!(tab === 'matches' && chatWith) && (
         <BottomNav
           activeTab={tab}
-          onTabChange={(t) => { setTab(t); setChatWith(null); }}
+          onTabChange={(t) => { setTab(t); setChatWith(null); if (t === 'matches') setHasNewMatch(false); }}
           matchCount={matches.length}
+          hasNewMatch={hasNewMatch}
         />
       )}
 

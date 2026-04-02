@@ -1,4 +1,4 @@
-export default function BottomNav({ activeTab, onTabChange, matchCount }) {
+export default function BottomNav({ activeTab, onTabChange, matchCount, hasNewMatch }) {
   return (
     <nav className="bottom-nav">
       <button
@@ -23,7 +23,7 @@ export default function BottomNav({ activeTab, onTabChange, matchCount }) {
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
         {matchCount > 0 && (
-          <span className="nav-badge">{matchCount}</span>
+          <span className="nav-badge" style={hasNewMatch ? { animation: 'pulse 0.6s ease 3' } : {}}>{matchCount}</span>
         )}
         <span>Matches</span>
       </button>
