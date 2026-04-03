@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import * as db from '../lib/db'
-import { generateMatchDatePlan, getMatchDatePlan, getMyDatePrefs } from '../lib/ai'
+import {
+  generateMatchDatePlan, getMatchDatePlan, getMyDatePrefs,
+  approveDatePlan, requestDatePlanChange, submitAvailability,
+  scheduleDatePlan, subscribeToDatePlans
+} from '../lib/ai'
 import Auth from './Auth'
 import Onboarding from './Onboarding'
 import DateOnboarding from './DateOnboarding'
@@ -30,8 +34,8 @@ export default function App() {
   const [hasNewMatch, setHasNewMatch] = useState(false)
 
   // AI date feature state
-  const [myDatePrefs, setMyDatePrefs] = useState(null) // { structured_prefs, date_personality }
-  const [datePlans, setDatePlans] = useState({})        // { [matchId]: planText }
+  const [myDatePrefs, setMyDatePrefs] = useState(null)
+  const [datePlans, setDatePlans] = useState({})  // { [matchId]: fullPlanRow }
   const [datePlanLoading, setDatePlanLoading] = useState(false)
 
   useEffect(() => {
@@ -52,13 +56,26 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // ── Realtime subscription for date plans ──
+  useEffect(() => {
+    if (!session?.user || matches.length === 0) return
+
+    const matchIds = new Set(matches.map(m => m.matchId))
+
+    const unsub = subscribeToDatePlans((updatedRow) => {
+      if (matchIds.has(updatedRow.match_id)) {
+        setDatePlans(prev => ({ ...prev, [updatedRow.match_id]: updatedRow }))
+      }
+    })
+
+    return unsub
+  }, [session, matches])
+
   const loadProfile = async (userId) => {
     const p = await db.getProfile(userId)
     if (p) {
       setProfile(p)
       setNeedsProfile(false)
-      // Date onboarding only triggers for new signups via handleProfileComplete
-      // Returning users go straight into the app regardless of date_personality
       loadData(userId)
       loadMyDatePrefs()
     } else {
@@ -90,13 +107,13 @@ export default function App() {
     )
     setMessages(msgMap)
 
-    // Load existing date plans for all matches
+    // Load existing date plans for all matches (full row objects)
     await Promise.all(
       matchList.map(async (m) => {
         try {
           const plan = await getMatchDatePlan(m.matchId)
-          if (plan?.plan_text) {
-            setDatePlans(prev => ({ ...prev, [m.matchId]: plan.plan_text }))
+          if (plan) {
+            setDatePlans(prev => ({ ...prev, [m.matchId]: plan }))
           }
         } catch {}
       })
@@ -118,7 +135,6 @@ export default function App() {
     const { data: { session: currentSession } } = await supabase.auth.getSession()
     const userId = (currentSession || session).user.id
 
-    // Upload all photos (photoFiles is an array of File objects)
     const photoUrls = []
     if (profileData.photoFiles && profileData.photoFiles.length > 0) {
       for (let i = 0; i < profileData.photoFiles.length; i++) {
@@ -137,12 +153,10 @@ export default function App() {
     if (currentSession && !session) setSession(currentSession)
     setProfile(p)
     setNeedsProfile(false)
-    // New users always go through date onboarding
     setNeedsDateOnboarding(true)
   }
 
   const handleDateOnboardingComplete = (result) => {
-    // Update local profile with the new personality/summary
     setProfile(prev => prev ? {
       ...prev,
       date_personality: result.date_personality,
@@ -183,18 +197,79 @@ export default function App() {
       // Generate date plan async — show loading state in modal
       setDatePlanLoading(true)
       try {
-        const plan = await generateMatchDatePlan(
+        const result = await generateMatchDatePlan(
           match.id,
           session.user.id,
           swipeProfile.id
         )
-        if (plan) {
-          setDatePlans(prev => ({ ...prev, [match.id]: plan }))
+        if (result?.datePlan) {
+          setDatePlans(prev => ({ ...prev, [match.id]: result.datePlan }))
         }
       } catch {}
       setDatePlanLoading(false)
     }
   }, [session])
+
+  // ── Collaborative date plan handlers ──
+
+  const handleApprovePlan = useCallback(async (matchId) => {
+    try {
+      const updated = await approveDatePlan(matchId, session.user.id)
+      setDatePlans(prev => ({ ...prev, [matchId]: updated }))
+    } catch (err) {
+      console.error('Approve failed:', err)
+    }
+  }, [session])
+
+  const handleRequestPlanChange = useCallback(async (matchId, suggestion) => {
+    const plan = datePlans[matchId]
+    if (!plan) return
+
+    // Optimistically set editing state
+    setDatePlans(prev => ({
+      ...prev,
+      [matchId]: { ...prev[matchId], status: 'editing', change_suggestion: suggestion }
+    }))
+
+    try {
+      const result = await requestDatePlanChange(
+        matchId,
+        session.user.id,
+        suggestion,
+        plan.user1_id,
+        plan.user2_id,
+        plan.plan_text
+      )
+      if (result?.datePlan) {
+        setDatePlans(prev => ({ ...prev, [matchId]: result.datePlan }))
+      }
+    } catch (err) {
+      console.error('Change request failed:', err)
+      // Revert optimistic update
+      setDatePlans(prev => ({
+        ...prev,
+        [matchId]: { ...prev[matchId], status: 'proposed', change_suggestion: null }
+      }))
+    }
+  }, [session, datePlans])
+
+  const handleSubmitAvailability = useCallback(async (matchId, slots) => {
+    try {
+      const updated = await submitAvailability(matchId, session.user.id, slots)
+      setDatePlans(prev => ({ ...prev, [matchId]: updated }))
+    } catch (err) {
+      console.error('Availability submit failed:', err)
+    }
+  }, [session])
+
+  const handleScheduleDate = useCallback(async (matchId, scheduledAt) => {
+    try {
+      const updated = await scheduleDatePlan(matchId, scheduledAt)
+      setDatePlans(prev => ({ ...prev, [matchId]: updated }))
+    } catch (err) {
+      console.error('Schedule failed:', err)
+    }
+  }, [])
 
   const handleSendMessage = useCallback(async (matchId, text) => {
     const msg = await db.sendMessage(matchId, session.user.id, text)
@@ -203,12 +278,6 @@ export default function App() {
       [matchId]: [...(prev[matchId] || []), msg],
     }))
   }, [session])
-
-  // Send date idea as a message in the current chat
-  const handleSendDateIdea = useCallback(async (text) => {
-    if (!chatWith) return
-    await handleSendMessage(chatWith.matchId, text)
-  }, [chatWith, handleSendMessage])
 
   // Real-time message subscription
   useEffect(() => {
@@ -288,12 +357,43 @@ export default function App() {
     setTab('matches')
   }
 
+  const handleUpdatePhotos = async (slots) => {
+    const userId = session.user.id
+    const photoUrls = []
+
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i]
+      if (!slot) continue
+      if (typeof slot === 'string') {
+        photoUrls.push(slot)
+      } else if (slot.file) {
+        const url = await db.uploadPhoto(userId, slot.file, i)
+        photoUrls.push(url)
+      }
+    }
+
+    if (photoUrls.length === 0) return
+
+    const updated = await db.upsertProfile(userId, {
+      ...profile,
+      photo_url: photoUrls[0],
+      photos: photoUrls,
+    })
+    setProfile(updated)
+  }
+
+  const handleUpdateProfile = async (updates) => {
+    const updated = await db.upsertProfile(session.user.id, { ...profile, ...updates })
+    setProfile(updated)
+  }
+
   const userForUI = {
     name: profile.name,
     age: profile.age,
     bio: profile.bio,
     photo: profile.photo_url,
     photo_url: profile.photo_url,
+    photos: profile.photos || [],
     date_personality: profile.date_personality,
     date_vibe_summary: profile.date_vibe_summary,
   }
@@ -337,16 +437,21 @@ export default function App() {
             onBack={() => setChatWith(null)}
             datePlan={datePlans[chatWith.matchId]}
             matchId={chatWith.matchId}
-            onSendDateIdea={handleSendDateIdea}
+            onApprovePlan={handleApprovePlan}
+            onRequestPlanChange={handleRequestPlanChange}
+            onSubmitAvailability={handleSubmitAvailability}
+            onScheduleDate={handleScheduleDate}
           />
         )}
         {tab === 'profile' && (
           <ProfileView
             user={userForUI}
+            profile={profile}
             matchCount={matches.length}
-            likeCount={swipeCount}
             onLogout={handleLogout}
             onEditDateStyle={() => setNeedsDateOnboarding(true)}
+            onUpdatePhotos={handleUpdatePhotos}
+            onUpdateProfile={handleUpdateProfile}
           />
         )}
       </div>
@@ -369,12 +474,9 @@ export default function App() {
           datePlan={datePlans[matchPopup.matchId]}
           datePlanLoading={datePlanLoading}
           matchId={matchPopup.matchId}
-          onSendDateIdea={async (text) => {
-            const m = matchPopup
-            setMatchPopup(null)
-            openChat(m)
-            await handleSendMessage(m.matchId, text)
-          }}
+          currentUserId={session.user.id}
+          onApprovePlan={handleApprovePlan}
+          onRequestPlanChange={handleRequestPlanChange}
         />
       )}
     </div>

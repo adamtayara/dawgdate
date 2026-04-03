@@ -105,19 +105,23 @@ export async function submitDateDescription(rawInput, inputMethod = 'text') {
   return res.data // { date_personality, vibe_summary }
 }
 
-export async function generateMatchDatePlan(matchId, user1Id, user2Id) {
-  const res = await supabase.functions.invoke('generate-match-date', {
-    body: { matchId, user1Id, user2Id },
-  })
+// ============ DATE PLAN GENERATION & MANAGEMENT ============
+
+export async function generateMatchDatePlan(matchId, user1Id, user2Id, suggestion = null, previousPlan = null) {
+  const body = { matchId, user1Id, user2Id }
+  if (suggestion) body.suggestion = suggestion
+  if (previousPlan) body.previousPlan = previousPlan
+
+  const res = await supabase.functions.invoke('generate-match-date', { body })
 
   if (res.error) throw new Error(res.error.message || 'Generation failed')
-  return res.data?.plan || null
+  return res.data // { plan, datePlan }
 }
 
 export async function getMatchDatePlan(matchId) {
   const { data } = await supabase
     .from('match_date_plans')
-    .select('plan_text, feedback')
+    .select('*')
     .eq('match_id', matchId)
     .maybeSingle()
   return data
@@ -131,6 +135,145 @@ export async function submitDatePlanFeedback(matchId, feedback) {
   if (error) throw error
 }
 
+// ============ COLLABORATIVE DATE PLAN ACTIONS ============
+
+/**
+ * Approve the current version of a date plan.
+ * If both users approve the same version, status becomes 'agreed'.
+ */
+export async function approveDatePlan(matchId, userId) {
+  // Fetch current plan to determine user1/user2 and version
+  const { data: plan } = await supabase
+    .from('match_date_plans')
+    .select('*')
+    .eq('match_id', matchId)
+    .single()
+
+  if (!plan) throw new Error('No plan found')
+
+  const isUser1 = userId === plan.user1_id
+  const approvalField = isUser1 ? 'user1_approved_version' : 'user2_approved_version'
+  const otherApprovalField = isUser1 ? 'user2_approved_version' : 'user1_approved_version'
+
+  const updates = {
+    [approvalField]: plan.current_version,
+    updated_at: new Date().toISOString(),
+  }
+
+  // Check if the other user already approved this version
+  const otherApproved = plan[otherApprovalField] === plan.current_version
+  if (otherApproved) {
+    // Both approved — mark as agreed!
+    updates.status = 'agreed'
+    updates.agreed_at = new Date().toISOString()
+    updates.agreed_version = plan.current_version
+  } else {
+    updates.status = 'waiting_approval'
+  }
+
+  const { data, error } = await supabase
+    .from('match_date_plans')
+    .update(updates)
+    .eq('match_id', matchId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * Request a change to the date plan.
+ * Sets status to 'editing', then calls the edge function to regenerate.
+ */
+export async function requestDatePlanChange(matchId, userId, suggestion, user1Id, user2Id, previousPlan) {
+  // Set editing state immediately
+  await supabase
+    .from('match_date_plans')
+    .update({
+      status: 'editing',
+      change_suggestion: suggestion,
+      change_requested_by: userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('match_id', matchId)
+
+  // Call edge function to regenerate
+  const result = await generateMatchDatePlan(matchId, user1Id, user2Id, suggestion, previousPlan)
+  return result // { plan, datePlan }
+}
+
+/**
+ * Submit availability slots for scheduling.
+ */
+export async function submitAvailability(matchId, userId, slots) {
+  const { data: plan } = await supabase
+    .from('match_date_plans')
+    .select('user1_id, user2_id')
+    .eq('match_id', matchId)
+    .single()
+
+  if (!plan) throw new Error('No plan found')
+
+  const isUser1 = userId === plan.user1_id
+  const field = isUser1 ? 'user1_availability' : 'user2_availability'
+
+  const { data, error } = await supabase
+    .from('match_date_plans')
+    .update({
+      [field]: slots,
+      status: 'collecting_availability',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('match_id', matchId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * Confirm a scheduled date time.
+ */
+export async function scheduleDatePlan(matchId, scheduledAt, location = null) {
+  const { data, error } = await supabase
+    .from('match_date_plans')
+    .update({
+      status: 'scheduled',
+      scheduled_at: scheduledAt,
+      scheduled_location: location,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('match_id', matchId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * Subscribe to Realtime changes on match_date_plans.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToDatePlans(callback) {
+  const channel = supabase
+    .channel('date-plans-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'match_date_plans',
+      },
+      (payload) => callback(payload.new)
+    )
+    .subscribe()
+
+  return () => supabase.removeChannel(channel)
+}
+
 // ============ DATE PERSONALITY DISPLAY ============
 
 const PERSONALITY_META = {
@@ -142,6 +285,11 @@ const PERSONALITY_META = {
   'Artsy Connector':        { emoji: '🎨', color: '#3B82F6', desc: 'Finds beauty in everything' },
   'Social Butterfly':       { emoji: '🦋', color: '#F97316', desc: 'Energy that fills any room' },
   'Intimate Intellectual':  { emoji: '📖', color: '#0EA5E9', desc: 'Deep conversations, real connection' },
+  // Additional personalities from test data
+  'Adventure Seeker':       { emoji: '🧗', color: '#F59E0B', desc: 'Always chasing the next thrill' },
+  'Chill Romantic':         { emoji: '🌅', color: '#EC4899', desc: 'Sunset walks and deep talks' },
+  'Creative Explorer':      { emoji: '📸', color: '#3B82F6', desc: 'Finds magic in the overlooked' },
+  'Nature Lover':           { emoji: '🌿', color: '#10B981', desc: 'Happiest under open sky' },
 }
 
 export function getPersonalityMeta(label) {

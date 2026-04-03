@@ -37,7 +37,11 @@ function Confetti() {
   )
 }
 
-export default function MatchModal({ user, match, onChat, onClose, datePlan, datePlanLoading, matchId, onSendDateIdea }) {
+export default function MatchModal({
+  user, match, onChat, onClose,
+  datePlan, datePlanLoading, matchId,
+  currentUserId, onApprovePlan, onRequestPlanChange,
+}) {
   return (
     <div className="match-overlay" onClick={onClose}>
       <Confetti />
@@ -67,9 +71,13 @@ export default function MatchModal({ user, match, onChat, onClose, datePlan, dat
         )}
         {!datePlanLoading && datePlan && (
           <MatchDateCard
-            matchId={matchId}
-            plan={datePlan}
-            onSendIdea={onSendDateIdea}
+            datePlan={datePlan}
+            currentUserId={currentUserId}
+            matchProfile={match}
+            onApprove={() => onApprovePlan(matchId)}
+            onRequestChange={(suggestion) => onRequestPlanChange(matchId, suggestion)}
+            onSubmitAvailability={() => {}}
+            onSchedule={() => {}}
           />
         )}
 

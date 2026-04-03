@@ -1,4 +1,4 @@
-export default function ChatList({ matches, messages, onOpenChat }) {
+export default function ChatList({ matches, messages, datePlans, onOpenChat }) {
   if (matches.length === 0) {
     return (
       <div className="no-matches">
@@ -13,6 +13,22 @@ export default function ChatList({ matches, messages, onOpenChat }) {
     )
   }
 
+  const getStatusBadge = (matchId) => {
+    const plan = datePlans?.[matchId]
+    if (!plan) return null
+    const status = plan.status || 'proposed'
+    const badges = {
+      proposed: { icon: '💡', color: '#F59E0B' },
+      waiting_approval: { icon: '⏳', color: '#F59E0B' },
+      editing: { icon: '✏️', color: '#6B7280' },
+      agreed: { icon: '🤝', color: '#10B981' },
+      collecting_availability: { icon: '📅', color: '#3B82F6' },
+      pending_overlap: { icon: '🔄', color: '#F59E0B' },
+      scheduled: { icon: '📍', color: '#10B981' },
+    }
+    return badges[status] || null
+  }
+
   // Separate new matches (no messages) from conversations
   const newMatches = matches.filter(m => !(messages[m.matchId]?.length > 0))
   const conversations = matches.filter(m => messages[m.matchId]?.length > 0)
@@ -25,12 +41,22 @@ export default function ChatList({ matches, messages, onOpenChat }) {
         <>
           <div className="chat-list-subtitle">New Matches</div>
           <div className="new-matches-row">
-            {newMatches.map((m) => (
-              <div key={m.matchId} className="new-match-item" onClick={() => onOpenChat(m)}>
-                <img className="new-match-avatar" src={m.profile.photo_url || m.profile.photo} alt={m.profile.name} />
-                <span className="new-match-name">{m.profile.name}</span>
-              </div>
-            ))}
+            {newMatches.map((m) => {
+              const badge = getStatusBadge(m.matchId)
+              return (
+                <div key={m.matchId} className="new-match-item" onClick={() => onOpenChat(m)}>
+                  <div className="new-match-avatar-wrap">
+                    <img className="new-match-avatar" src={m.profile.photo_url || m.profile.photo} alt={m.profile.name} />
+                    {badge && (
+                      <span className="match-status-badge" title={datePlans?.[m.matchId]?.status}>
+                        {badge.icon}
+                      </span>
+                    )}
+                  </div>
+                  <span className="new-match-name">{m.profile.name}</span>
+                </div>
+              )
+            })}
           </div>
         </>
       )}
@@ -44,10 +70,18 @@ export default function ChatList({ matches, messages, onOpenChat }) {
             const time = lastMsg?.created_at
               ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
               : lastMsg?.time || ''
+            const badge = getStatusBadge(m.matchId)
 
             return (
               <div key={m.matchId} className="chat-item" onClick={() => onOpenChat(m)}>
-                <img className="chat-avatar" src={m.profile.photo_url || m.profile.photo} alt={m.profile.name} />
+                <div className="chat-avatar-wrap">
+                  <img className="chat-avatar" src={m.profile.photo_url || m.profile.photo} alt={m.profile.name} />
+                  {badge && (
+                    <span className="match-status-badge">
+                      {badge.icon}
+                    </span>
+                  )}
+                </div>
                 <div className="chat-info">
                   <div className="chat-name">{m.profile.name}</div>
                   <div className="chat-preview">
