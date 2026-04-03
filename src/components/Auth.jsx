@@ -143,7 +143,7 @@ export default function Auth({ onAuth }) {
             placeholder={mode === 'signup' ? 'Create a password (6+ chars)' : 'Your password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            minLength={6}
+            minLength={mode === 'signup' ? 6 : undefined}
             required
           />
         </div>
