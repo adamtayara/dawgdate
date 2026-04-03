@@ -11,6 +11,7 @@ import ChatRoom from './ChatRoom'
 import ProfileView from './ProfileView'
 import MatchModal from './MatchModal'
 import BottomNav from './BottomNav'
+import FloatingBackground from './FloatingBackground'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -119,17 +120,22 @@ export default function App() {
   const handleProfileComplete = async (profileData) => {
     const { data: { session: currentSession } } = await supabase.auth.getSession()
     const userId = (currentSession || session).user.id
-    let photoUrl = ''
 
-    if (profileData.photoFile) {
-      photoUrl = await db.uploadPhoto(userId, profileData.photoFile)
+    // Upload all photos (photoFiles is an array of File objects)
+    const photoUrls = []
+    if (profileData.photoFiles && profileData.photoFiles.length > 0) {
+      for (let i = 0; i < profileData.photoFiles.length; i++) {
+        const url = await db.uploadPhoto(userId, profileData.photoFiles[i], i)
+        photoUrls.push(url)
+      }
     } else if (profileData.photo) {
-      photoUrl = profileData.photo
+      photoUrls.push(profileData.photo)
     }
 
     const p = await db.upsertProfile(userId, {
       ...profileData,
-      photo_url: photoUrl,
+      photo_url: photoUrls[0] || '',
+      photos: photoUrls,
     })
     if (currentSession && !session) setSession(currentSession)
     setProfile(p)
@@ -297,6 +303,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <FloatingBackground />
       <header className="header">
         <div className="header-logo">
           <div className="header-icon">

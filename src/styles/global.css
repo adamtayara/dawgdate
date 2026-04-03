@@ -1575,6 +1575,191 @@ img {
   100% { background-position: 200% 0; }
 }
 
+/* ========== FLOATING BACKGROUND ========== */
+
+.floating-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.floating-el {
+  position: absolute;
+  will-change: transform;
+  animation: floatDrift linear infinite;
+}
+
+.floating-el svg {
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes floatDrift {
+  0%   { transform: translate(0,    0px)  rotate(0deg);   }
+  20%  { transform: translate(12px, -18px) rotate(6deg);  }
+  40%  { transform: translate(-8px, -35px) rotate(-4deg); }
+  60%  { transform: translate(16px, -52px) rotate(8deg);  }
+  80%  { transform: translate(-6px, -68px) rotate(-3deg); }
+  100% { transform: translate(0,   -88px) rotate(0deg);   }
+}
+
+/* Make sure all content sits above the floating layer */
+.header, .main-content, .bottom-nav {
+  position: relative;
+  z-index: 1;
+}
+
+/* ========== PHOTO GRID (ONBOARDING) ========== */
+
+.photo-grid {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.photo-grid-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.photo-grid-extras {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.photo-slot {
+  position: relative;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--gray-100);
+  border: 2px dashed var(--gray-300);
+  transition: border-color 0.2s, box-shadow 0.2s;
+  flex-shrink: 0;
+}
+
+.photo-slot:active {
+  transform: scale(0.97);
+}
+
+.main-slot {
+  width: 140px;
+  height: 170px;
+  border-radius: var(--radius-lg);
+}
+
+.extra-slot {
+  width: 100%;
+  height: 80px;
+  border-radius: var(--radius-sm);
+}
+
+.photo-slot.has-photo {
+  border-style: solid;
+  border-color: var(--gray-200);
+}
+
+.photo-slot.slot-valid {
+  border-color: #16A34A;
+  box-shadow: 0 0 0 3px rgba(22,163,74,0.12);
+}
+
+.photo-slot.slot-invalid {
+  border-color: var(--gray-300);
+  box-shadow: none;
+}
+
+.photo-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.photo-slot-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: var(--gray-400);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.photo-remove-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition: background 0.15s;
+}
+
+.photo-remove-btn:active {
+  background: rgba(0,0,0,0.8);
+}
+
+/* ========== CARD PHOTO NAVIGATION ========== */
+
+.card-photo-bars {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.card-photo-bar {
+  flex: 1;
+  height: 3px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.35);
+  transition: background 0.2s;
+}
+
+.card-photo-bar.active {
+  background: rgba(255,255,255,0.95);
+}
+
+.card-photo-bar.past {
+  background: rgba(255,255,255,0.65);
+}
+
+/* Invisible tap zones for photo navigation */
+.card-tap-left,
+.card-tap-right {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  z-index: 2;
+  pointer-events: none; /* handled by the card's pointer events */
+}
+
+.card-tap-left  { left: 0; }
+.card-tap-right { right: 0; }
+
 /* ========== AI DATE ONBOARDING ========== */
 
 .date-onboarding {

@@ -20,6 +20,7 @@ export async function upsertProfile(userId, profile) {
       age: profile.age,
       bio: profile.bio || '',
       photo_url: profile.photo_url || '',
+      photos: profile.photos || [],
       major: profile.major || '',
       gender: profile.gender || '',
       looking_for: profile.looking_for || 'everyone',
@@ -30,13 +31,14 @@ export async function upsertProfile(userId, profile) {
   return data
 }
 
-export async function uploadPhoto(userId, file) {
-  const ext = file.name.split('.').pop()
-  const path = `${userId}/avatar.${ext}`
+// Upload a single photo. index differentiates filenames so multiple
+// uploads don't overwrite each other.
+export async function uploadPhoto(userId, file, index = 0) {
+  const path = `${userId}/photo_${index}.jpg`
 
   const { error: uploadError } = await supabase.storage
     .from('photos')
-    .upload(path, file, { upsert: true })
+    .upload(path, file, { upsert: true, contentType: 'image/jpeg' })
   if (uploadError) throw uploadError
 
   const { data } = supabase.storage
