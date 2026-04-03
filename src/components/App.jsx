@@ -57,12 +57,9 @@ export default function App() {
     if (p) {
       setProfile(p)
       setNeedsProfile(false)
-      // Check if date onboarding is needed (no personality yet)
-      if (!p.date_personality) {
-        setNeedsDateOnboarding(true)
-      }
+      // Date onboarding only triggers for new signups via handleProfileComplete
+      // Returning users go straight into the app regardless of date_personality
       loadData(userId)
-      // Load user's own date prefs for compatibility scoring
       loadMyDatePrefs()
     } else {
       setNeedsProfile(true)
